@@ -187,10 +187,18 @@ class ProperTree:
         # xcode_data:                bool, true = <data>XXXX</data>, false = different lines
         # new_plist_default_type:    string, XML/Binary
         #
+        self.darwin_path = "~/Library/Preferences/ProperTree/"
+        self.windows_path = "%LOCALAPPDATA%/ProperTree/"
+        self.linux_path = "~/.ProperTree/"
+        if not getattr(sys, 'frozen', False):
+            self.settings_path = "Scripts/"
+        if str(sys.platform) == "win32":
+            self.settings_path = os.path.expandvars(self.windows_path)
+        else:
+            self.settings_path = os.path.expanduser(self.darwin_path if str(sys.platform) == "darwin" else self.linux_path)
         self.settings = {}
         try:
-            if os.path.exists("Scripts/settings.json"):
-                self.settings = json.load(open("Scripts/settings.json"))
+            self.settings = json.load(open(self.settings_path + "settings.json"))
         except:
             pass
         os.chdir(cwd)
@@ -542,7 +550,9 @@ class ProperTree:
         cwd = os.getcwd()
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         try:
-            json.dump(self.settings,open("Scripts/settings.json","w"),indent=4)
+            if not os.path.exists(self.settings_path):
+                os.mkdir(self.settings_path)
+            json.dump(self.settings, open(self.settings_path + "settings.json", "w"), indent=4)
         except:
             pass
         os.chdir(cwd)
