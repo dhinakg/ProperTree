@@ -1,32 +1,45 @@
 language: minimal
-os: osx
-osx_image: xcode11.3
-install:
-  - brew uninstall --ignore-dependencies python
-  - brew cleanup
-  - rm /usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/Formula/python.rb
-  - wget -O /usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/Formula/python.rb https://gist.githubusercontent.com/dhinakg/c4f0acebafc27c93dc40f2054d8a63a4/raw/21d9eebc3f15c7a0069ec0f51d2e08ed6a168263/python-with-tcl.rb
-  - HOMEBREW_NO_AUTO_UPDATE=1 brew install --build-from-source python
-  - pip3 install pyinstaller
-script:
-- pyinstaller ProperTree.spec
-- "./after_pyinstaller.sh"
-cache:
-  directories:
-  - "$HOME/Library/Caches/Homebrew"
-  - "/usr/local/Homebrew"
-before_cache:
-  - if [ "${TRAVIS_OS_NAME}" = "osx" ]; then brew cleanup; fi
-  - if [ "${TRAVIS_OS_NAME}" = "osx" ]; then find /usr/local/Homebrew \! -regex ".+\.git.+" -delete; fi
-before_deploy:
-  - zip -r -X ProperTree.app.zip dist/ProperTree.app
-  - git tag "$(git log --format=%h -1)"
+matrix:
+  include:
+    - os: osx
+      name: "macOS"
+      osx_image: xcode11.3
+      install:
+        - brew uninstall --ignore-dependencies python
+        - brew cleanup
+        - rm /usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/Formula/python.rb
+        - wget -O /usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/Formula/python.rb https://gist.githubusercontent.com/dhinakg/c4f0acebafc27c93dc40f2054d8a63a4/raw/      21d9eebc3f15c7a0069ec0f51d2e08ed6a168263/python-with-tcl.rb
+        - HOMEBREW_NO_AUTO_UPDATE=1 brew install --build-from-source python
+        - pip3 install pyinstaller
+      script:
+        - pyinstaller ProperTree.spec
+        - "./after_pyinstaller.sh"
+      cache:
+        directories:
+        - "$HOME/Library/Caches/Homebrew"
+        - "/usr/local/Homebrew"
+      before_cache:
+        - brew cleanup
+        - find /usr/local/Homebrew \! -regex ".+\.git.+" -delete
+      before_deploy:
+        - cd dist
+        - zip -r -X ProperTree.app.zip ProperTree.app
+      deploy:
+        file: dist/ProperTree.app.zip
+
+    - os: windows
+      name: "Windows"
+      python: "3.8"
+      script: pyinstaller ProperTree.spec
+      deploy:
+        file: dist/ProperTree.exe
+
 deploy:
   skip_cleanup: true
   provider: releases
-  file: ProperTree.app.zip
+#  file: dist/ProperTree.app.zip
   on:
-    tags: false
+    tags: true
     repo: dhinakg/ProperTree
   api_key:
     secure: j4koIkpcLBVubL2TEHRjHbOFMZAaRepvrDPE6S/lg0mq2SP+eBeAybXjykfs+Brfad75j5pU+a+WO+m7MLP/tGmCTjGDR78s2ZcXGIaz30+laGmYXsrcuNOxvfe/ts13Yxr8ATpey1aJmqS02oTvH0S1FqQJDhFix7aNimPejgw+LtfKuu1H1gkJZ+yEv2Q5aSuQi8QwcP/pur95URsPqp3O7sFBvhnzThzsd+PI/Wj7lXFDUb4eaw4IbHKixfwhCk1a/7f6cwEqmsYnqcE19ZbuKKAj60EPd87+DyacuXToJVW9k7YP58iTpkPQIDpsWfYuURPLN8LxXhHvtBlcVEA17UGzE7TMNR2/gZECtiEnaV8rrmlQ4OS5c2m2xlApdTc8ZykHJejLR4gztTlznvxqHR53SKylRg4Ts0HQVxbcXBjOl+AA2AVIrvHAUikxkDRSlqxxPdHONb14XzD2fG4po4TbW5Numjo+oRdM8X+5h8z/eRyxRNl9nr1Kitkdo703MXHBzKEua/Dj+5/L91Q3NPdOQ+SNyGubB5tpzUR0zyFOerezpRbEvHZzFnGGIDDzea1VxbU9ABalOLcW0UJ9ulmKowm/CIo3OW3r2aRkd2XI/EYcgFR9panmsuEKIwJXwA/tDbCnWoH6v8Zz28gKZ4lp0y+qjOp+GASvqKw=
