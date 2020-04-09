@@ -37,7 +37,9 @@ matrix:
     - os: windows
       name: "Windows"
       python: "3.8"
-      install: pip install pyinstaller
+      install:
+        - choco install python3 -y
+        - pip3 install pyinstaller
       script: pyinstaller ProperTree.spec
       deploy:
         skip_cleanup: true
