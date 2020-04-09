@@ -39,7 +39,7 @@ matrix:
       python: "3.8"
       install:
         - choco install python3 -y
-        - where python
+        - refreshenv
         - python -m pip
         - where python3
         - where pip
