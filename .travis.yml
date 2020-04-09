@@ -2,7 +2,7 @@ language: minimal
 os: osx
 osx_image: xcode11.3
 install:
-  - brew uninstall python
+  - brew uninstall --ignore-dependencies python
   - brew cleanup
   - rm /usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/Formula/python.rb
   - wget -O /usr/local/Homebrew/Library/Taps/homebrew/homebrew-core/Formula/python.rb https://gist.githubusercontent.com/dhinakg/c4f0acebafc27c93dc40f2054d8a63a4/raw/21d9eebc3f15c7a0069ec0f51d2e08ed6a168263/python-with-tcl.rb
