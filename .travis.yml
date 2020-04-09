@@ -24,6 +24,7 @@ matrix:
       before_deploy:
         - cd dist
         - zip -r -X ProperTree.app.zip ProperTree.app
+        - cd ..
       deploy:
         skip_cleanup: true
         provider: releases
