@@ -39,12 +39,8 @@ matrix:
       python: "3.8"
       install:
         - choco install python3 -y
-        - refreshenv
-        - python -m pip
-        - where python3
-        - where pip
-        - pip3 install pyinstaller
-      script: pyinstaller ProperTree.spec
+        - cmd //c "RefreshEnv.cmd && pip3 install pyinstaller"
+      script: cmd //c "RefreshEnv.cmd && pyinstaller ProperTree.spec"
       deploy:
         skip_cleanup: true
         provider: releases
