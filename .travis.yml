@@ -39,6 +39,9 @@ matrix:
       python: "3.8"
       install:
         - choco install python3 -y
+        - python3 -m pip
+        - where python3
+        - where pip
         - pip3 install pyinstaller
       script: pyinstaller ProperTree.spec
       deploy:
