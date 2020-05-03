@@ -192,7 +192,7 @@ class ProperTree:
         self.linux_path = "~/.ProperTree/"
         if not getattr(sys, 'frozen', False):
             self.settings_path = "Scripts/"
-        if str(sys.platform) == "win32":
+        elif str(sys.platform) == "win32":
             self.settings_path = os.path.expandvars(self.windows_path)
         else:
             self.settings_path = os.path.expanduser(self.darwin_path if str(sys.platform) == "darwin" else self.linux_path)
