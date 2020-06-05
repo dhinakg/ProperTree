@@ -40,6 +40,7 @@ app = BUNDLE(exe,
          bundle_identifier='com.corpnewt.ProperTree',
          info_plist={
             'NSRequiresAquaSystemAppearance': False,
+            'NSHighResolutionCapable': True,
             "CFBundleShortVersionString": "0.0",
             "CFBundleSignature": "????",
             "CFBundleInfoDictionaryVersion": "0.0",
