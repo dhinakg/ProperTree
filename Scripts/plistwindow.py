@@ -1528,7 +1528,7 @@ class PlistWindow(tk.Toplevel):
             self.collapse_all()
         # Ensure the root is expanded at least
         self._tree.item(self.get_root_node(),open=True)
-        self.after(1, self.alternate_colors)
+        self.after(10, self.alternate_colors)
 
     def close_window(self, event=None):
         # Check if we need to save first, then quit if we didn't cancel

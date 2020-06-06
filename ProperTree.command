@@ -191,7 +191,7 @@ class ProperTree:
         self.windows_path = "%LOCALAPPDATA%/ProperTree/"
         self.linux_path = "~/.ProperTree/"
         if not getattr(sys, 'frozen', False):
-            self.settings_path = "Scripts/"
+            self.settings_path = ""
         elif str(sys.platform) == "win32":
             self.settings_path = os.path.expandvars(self.windows_path)
         else:
