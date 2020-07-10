@@ -2,10 +2,11 @@
 setlocal enableDelayedExpansion
 
 REM Setup initial vars
-set "script_name=%~n0.command"
+set "script_name="
 set "thisDir=%~dp0"
 set /a tried=0
 set "toask=yes"
+set "pause_on_error=yes"
 set "py2v="
 set "py2path="
 set "py3v="
@@ -18,14 +19,26 @@ REM   FALSE = Use py2
 REM   FORCE = Use py3
 set "use_py3=TRUE"
 
+REM Get the system32 (or equivalent) path
+call :setcomspec
+set "syspath=%ComSpec:cmd.exe=%"
+
 goto checkscript
 
 :checkscript
 REM Check for our script first
+set "looking_for=!script_name!"
+if "!script_name!" == "" (
+    set "looking_for=%~n0.py or %~n0.command"
+    set "script_name=%~n0.py"
+    if not exist "!thisDir!\!script_name!" (
+        set "script_name=%~n0.command"
+    )
+)
 if not exist "!thisDir!\!script_name!" (
-    echo Could not find !script_name!.
+    echo Could not find !looking_for!.
     echo Please make sure to run this script from the same directory
-    echo as !script_name!.
+    echo as !looking_for!.
     echo.
     echo Press [enter] to quit.
     pause > nul
@@ -33,11 +46,49 @@ if not exist "!thisDir!\!script_name!" (
 )
 goto checkpy
 
+:setcomspec
+REM Helper method to return the "proper" path to cmd.exe, reg.exe, and where.exe by walking the ComSpec var
+REM Prep the LF variable to use the "line feed" approach
+(SET LF=^
+%=this line is empty=%
+)
+REM Strip double semi-colons
+call :undouble "ComSpec" ";"
+set "testpath=%ComSpec:;=!LF!%"
+REM Let's walk each path and test if cmd.exe, reg.exe, and where.exe exist there
+set /a found=0
+for /f "tokens=* delims=" %%i in ("!testpath!") do (
+    REM Only continue if we haven't found it yet
+    if NOT "%%i" == "" (
+        if !found! lss 1 (
+            set "temppath=%%i"
+            REM Remove "cmd.exe" from the end if it exists
+            if /i "!temppath:~-7!" == "cmd.exe" (
+                set "temppath=!temppath:~0,-7!"
+            )
+            REM Pad the end with a backslash if needed
+            if NOT "!temppath:~-1!" == "\" (
+                set "temppath=!temppath!\"
+            )
+            REM Let's see if cmd, reg, and where exist there - and set it if so
+            if EXIST "!temppath!cmd.exe" (
+                if EXIST "!temppath!reg.exe" (
+                    if EXIST "!temppath!where.exe" (
+                        set /a found=1
+                        set "ComSpec=!temppath!cmd.exe"
+                    )
+                )
+            )
+        )
+    )
+)
+goto :EOF
+
 :updatepath
 set "spath="
 set "upath="
-for /f "tokens=2* delims= " %%i in ('reg.exe query "HKCU\Environment" /v "Path" 2^> nul') do ( if not "%%j" == "" set "upath=%%j" )
-for /f "tokens=2* delims= " %%i in ('reg.exe query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "Path" 2^> nul') do ( if not "%%j" == "" set "spath=%%j" )
+for /f "USEBACKQ tokens=2* delims= " %%i in (`!syspath!reg.exe query "HKCU\Environment" /v "Path" 2^> nul`) do ( if not "%%j" == "" set "upath=%%j" )
+for /f "USEBACKQ tokens=2* delims= " %%i in (`!syspath!reg.exe query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v "Path" 2^> nul`) do ( if not "%%j" == "" set "spath=%%j" )
 if not "%spath%" == "" (
     REM We got something in the system path
     set "PATH=%spath%"
@@ -65,9 +116,9 @@ goto :EOF
 
 :checkpy
 call :updatepath
-REM Get the system32 (or equivalent) path
-set syspath=%ComSpec:cmd.exe=%
-for /f "tokens=*" %%x in ('!syspath!where python') do ( call :checkpyversion "%%x" "py2v" "py2path" "py3v" "py3path" )
+for /f "USEBACKQ tokens=*" %%x in (`!syspath!where.exe python 2^> nul`) do ( call :checkpyversion "%%x" "py2v" "py2path" "py3v" "py3path" )
+for /f "USEBACKQ tokens=*" %%x in (`!syspath!where.exe python3 2^> nul`) do ( call :checkpyversion "%%x" "py2v" "py2path" "py3v" "py3path" )
+for /f "USEBACKQ tokens=*" %%x in (`!syspath!where.exe py 2^> nul`) do ( call :checkpyversion "%%x" "py2v" "py2path" "py3v" "py3path" )
 set "targetpy=3"
 if /i "!use_py3!" == "FALSE" (
     set "targetpy=2"
@@ -138,7 +189,7 @@ if "!version:~0,1!" == "2" (
 )
 goto :EOF
 
-:isnumber <check>
+:isnumber <check_value>
 set "var="&for /f "delims=0123456789." %%i in ("%~1") do set var=%%i
 if defined var (exit /b 1)
 exit /b 0
@@ -259,5 +310,14 @@ if "!args!"=="" (
     "!pypath!" "!thisDir!!script_name!"
 ) else (
     "!pypath!" "!thisDir!!script_name!" %*
+)
+if /i "!pause_on_error!" == "yes" (
+    if not "%ERRORLEVEL%" == "0" (
+        echo.
+        echo Script exited with error code: %ERRORLEVEL%
+        echo.
+        echo Press [enter] to exit...
+        pause > nul
+    )
 )
 goto :EOF
