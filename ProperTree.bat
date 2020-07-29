@@ -20,8 +20,7 @@ REM   FORCE = Use py3
 set "use_py3=TRUE"
 
 REM Get the system32 (or equivalent) path
-call :setcomspec
-set "syspath=%ComSpec:cmd.exe=%"
+call :getsyspath "syspath"
 
 goto checkscript
 
@@ -46,14 +45,14 @@ if not exist "!thisDir!\!script_name!" (
 )
 goto checkpy
 
-:setcomspec
+:getsyspath <variable_name>
 REM Helper method to return the "proper" path to cmd.exe, reg.exe, and where.exe by walking the ComSpec var
 REM Prep the LF variable to use the "line feed" approach
 (SET LF=^
 %=this line is empty=%
 )
 REM Strip double semi-colons
-call :undouble "ComSpec" ";"
+call :undouble "ComSpec" "%ComSpec%" ";"
 set "testpath=%ComSpec:;=!LF!%"
 REM Let's walk each path and test if cmd.exe, reg.exe, and where.exe exist there
 set /a found=0
@@ -76,6 +75,7 @@ for /f "tokens=* delims=" %%i in ("!testpath!") do (
                     if EXIST "!temppath!where.exe" (
                         set /a found=1
                         set "ComSpec=!temppath!cmd.exe"
+                        set "%~1=!temppath!"
                     )
                 )
             )
@@ -100,17 +100,16 @@ if not "%spath%" == "" (
     set "PATH=%upath%"
 )
 REM Remove double semicolons from the adjusted PATH
-call :undouble "PATH" ";"
+call :undouble "PATH" "%PATH%" ";"
 goto :EOF
 
-:undouble <string_name> <character>
+:undouble <string_name> <string_value> <character>
 REM Helper function to strip doubles of a single character out of a string recursively
-set "string_name=%~1"
-set "character=%~2"
-set "check=!%string_name%:%character%%character%=%character%!"
-if not "!check!" == "!%~1!" (
-    set "!string_name!=!check!"
-    call :undouble "%~1" "%~2"
+set "string_value=%~2"
+set "check=!string_value:%~3%~3=%~3!"
+if not "!check!" == "!string_value!" (
+    set "%~1=!check!"
+    call :undouble "%~1" "!check!" "%~3"
 )
 goto :EOF
 
@@ -118,7 +117,7 @@ goto :EOF
 call :updatepath
 for /f "USEBACKQ tokens=*" %%x in (`!syspath!where.exe python 2^> nul`) do ( call :checkpyversion "%%x" "py2v" "py2path" "py3v" "py3path" )
 for /f "USEBACKQ tokens=*" %%x in (`!syspath!where.exe python3 2^> nul`) do ( call :checkpyversion "%%x" "py2v" "py2path" "py3v" "py3path" )
-for /f "USEBACKQ tokens=*" %%x in (`!syspath!where.exe py 2^> nul`) do ( call :checkpyversion "%%x" "py2v" "py2path" "py3v" "py3path" )
+for /f "USEBACKQ tokens=*" %%x in (`!syspath!where.exe py 2^> nul`) do ( call :checkpylauncher "%%x" "py2v" "py2path" "py3v" "py3path" )
 set "targetpy=3"
 if /i "!use_py3!" == "FALSE" (
     set "targetpy=2"
@@ -132,37 +131,40 @@ if /i "!use_py3!" == "FALSE" (
 if not "!pypath!" == "" (
     goto runscript
 )
-
-if "!pypath!" == "" (
-    if %tried% lss 1 (
-        if /i "!toask!"=="yes" (
-            REM Better ask permission first
-            goto askinstall
-        ) else (
-            goto installpy
-        )
+if !tried! lss 1 (
+    if /i "!toask!"=="yes" (
+        REM Better ask permission first
+        goto askinstall
     ) else (
-        cls
-        echo   ###     ###
-        echo  # Warning #
-        echo ###     ###
-        echo.
-        REM Couldn't install for whatever reason - give the error message
-        echo Python is not installed or not found in your PATH var.
-        echo Please install it from https://www.python.org/downloads/windows/
-        echo.
-        echo Make sure you check the box labeled:
-        echo.
-        echo "Add Python X.X to PATH"
-        echo.
-        echo Where X.X is the py version you're installing.
-        echo.
-        echo Press [enter] to quit.
-        pause > nul
-        exit /b
+        goto installpy
     )
+) else (
+    cls
+    echo   ###     ###
+    echo  # Warning #
+    echo ###     ###
+    echo.
+    REM Couldn't install for whatever reason - give the error message
+    echo Python is not installed or not found in your PATH var.
+    echo Please install it from https://www.python.org/downloads/windows/
+    echo.
+    echo Make sure you check the box labeled:
+    echo.
+    echo "Add Python X.X to PATH"
+    echo.
+    echo Where X.X is the py version you're installing.
+    echo.
+    echo Press [enter] to quit.
+    pause > nul
+    exit /b
 )
 goto runscript
+
+:checkpylauncher <path> <py2v> <py2path> <py3v> <py3path>
+REM Attempt to check the latest python 2 and 3 versions via the py launcher
+for /f "USEBACKQ tokens=*" %%x in (`%~1 -2 -c "import sys; print(sys.executable)" 2^> nul`) do ( call :checkpyversion "%%x" "%~2" "%~3" "%~4" "%~5" )
+for /f "USEBACKQ tokens=*" %%x in (`%~1 -3 -c "import sys; print(sys.executable)" 2^> nul`) do ( call :checkpyversion "%%x" "%~2" "%~3" "%~4" "%~5" )
+goto :EOF
 
 :checkpyversion <path> <py2v> <py2path> <py3v> <py3path>
 set "version="&for /f "tokens=2* USEBACKQ delims= " %%a in (`"%~1" -V 2^>^&1`) do (
@@ -234,7 +236,7 @@ if /i "!menu!"=="y" (
     goto installpy
 ) else if "!menu!"=="n" (
     REM No OK here...
-    set /a tried=%tried%+1
+    set /a tried=!tried!+1
     goto checkpy
 )
 REM Incorrect answer - go back
@@ -243,7 +245,7 @@ goto askinstall
 :installpy
 REM This will attempt to download and install python
 REM First we get the html for the python downloads page for Windows
-set /a tried=%tried%+1
+set /a tried=!tried!+1
 cls
 echo   ###               ###
 echo  # Installing Python #
