@@ -134,25 +134,26 @@ class ProperTree:
             file_menu = tk.Menu(self.tk)
             main_menu = tk.Menu(self.tk)
             main_menu.add_cascade(label="File", menu=file_menu)
-            file_menu.add_command(label="New ({}N)".format(sign), command=self.new_plist)
-            file_menu.add_command(label="Open ({}O)".format(sign), command=self.open_plist)
-            file_menu.add_command(label="Save ({}S)".format(sign), command=self.save_plist)
-            file_menu.add_command(label="Save As ({}Shift+S)".format(sign), command=self.save_plist_as)
-            file_menu.add_command(label="Duplicate ({}D)".format(sign), command=self.duplicate_plist)
-            file_menu.add_command(label="Reload From Disk ({}L)".format(sign), command=self.reload_from_disk)
+            file_menu.add_command(label="New (Cmd+N)", command=self.new_plist)
+            file_menu.add_command(label="Open (Cmd+O)", command=self.open_plist)
+            file_menu.add_command(label="Save (Cmd+S)", command=self.save_plist)
+            file_menu.add_command(label="Save As... (Cmd+Shift+S)", command=self.save_plist_as)
+            file_menu.add_command(label="Duplicate (Cmd+D)", command=self.duplicate_plist)
+            file_menu.add_command(label="Reload From Disk (Cmd+L)", command=self.reload_from_disk)
             file_menu.add_separator()
-            file_menu.add_command(label="OC Snapshot ({}R)".format(sign), command=self.oc_snapshot)
-            file_menu.add_command(label="OC Clean Snapshot ({}Shift+R)".format(sign), command=self.oc_clean_snapshot)
+            file_menu.add_command(label="OC Snapshot (Cmd+R)", command=self.oc_snapshot)
+            file_menu.add_command(label="OC Clean Snapshot (Cmd+Shift+R)", command=self.oc_clean_snapshot)
             file_menu.add_separator()
-            file_menu.add_command(label="Convert Window ({}T)".format(sign), command=self.show_convert)
-            file_menu.add_command(label="Strip Comments ({}M)".format(sign), command=self.strip_comments)
+            file_menu.add_command(label="Convert Window (Cmd+T)", command=self.show_convert)
+            file_menu.add_command(label="Strip Comments (Cmd+M)", command=self.strip_comments)
+            file_menu.add_command(label="Strip Disabled Entries (Cmd+E)", command=self.strip_disabled)
             file_menu.add_separator()
-            file_menu.add_command(label="Toggle Find/Replace Pane ({}F)".format(sign),command=self.hide_show_find)
-            file_menu.add_command(label="Toggle Plist/Data Type Pane ({}P)".format(sign),command=self.hide_show_type)
+            file_menu.add_command(label="Settings (Cmd+,)",command=self.show_settings)
             file_menu.add_separator()
-            file_menu.add_command(label="Settings ({},)".format(sign),command=self.show_settings)
+            file_menu.add_command(label="Toggle Find/Replace Pane (Cmd+F)",command=self.hide_show_find)
+            file_menu.add_command(label="Toggle Plist/Data Type Pane (Cmd+P)",command=self.hide_show_type)
             file_menu.add_separator()
-            file_menu.add_command(label="Quit ({}Q)".format(sign), command=self.quit)
+            file_menu.add_command(label="Quit (Cmd+Q)", command=self.quit)
             self.tk.config(menu=main_menu)
 
         # Set bindings
@@ -167,6 +168,7 @@ class ProperTree:
         self.tk.bind_all("<{}-z>".format(key), self.undo)
         self.tk.bind_all("<{}-Z>".format(key), self.redo)
         self.tk.bind_all("<{}-m>".format(key), self.strip_comments)
+        self.tk.bind_all("<{}-e>".format(key), self.strip_disabled)
         self.tk.bind_all("<{}-r>".format(key), self.oc_snapshot)
         self.tk.bind_all("<{}-R>".format(key), self.oc_clean_snapshot)
         self.tk.bind_all("<{}-l>".format(key), self.reload_from_disk)
@@ -338,6 +340,16 @@ class ProperTree:
         if window in self.default_windows:
             return
         window.strip_comments(event)
+
+    def strip_disabled(self, event = None):
+        windows = self.stackorder(self.tk)
+        if not len(windows):
+            # Nothing to do
+            return
+        window = windows[-1] # Get the last item (most recent)
+        if window in self.default_windows:
+            return
+        window.strip_disabled(event)
 
     def change_to_type(self, value):
         self.to_type = value

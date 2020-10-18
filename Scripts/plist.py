@@ -28,6 +28,14 @@ except AttributeError:
 # Helper Methods #
 ###            ###
 
+def wrap_data(value):
+    if not _check_py3(): return plistlib.Data(value)
+    return value
+
+def extract_data(value):
+    if not _check_py3() and isinstance(value,plistlib.Data): return value.data
+    return value
+
 def _check_py3():
     return sys.version_info >= (3, 0)
 

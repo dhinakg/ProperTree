@@ -206,9 +206,8 @@ class PlistWindow(tk.Toplevel):
         self.plist_header = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>"""
+"""
         self.plist_footer = """
-</dict>
 </plist>"""
         # Create the window
         self.root = root
@@ -325,30 +324,29 @@ class PlistWindow(tk.Toplevel):
         # Setup menu bar (hopefully per-window) - only happens on non-mac systems
         if not str(sys.platform) == "darwin":
             key="Control"
-            sign = "Ctrl+"
             main_menu = tk.Menu(self)
             file_menu = tk.Menu(self, tearoff=0)
             main_menu.add_cascade(label="File", menu=file_menu)
-            file_menu.add_command(label="New ({}N)".format(sign), command=self.controller.new_plist)
-            file_menu.add_command(label="Open ({}O)".format(sign), command=self.controller.open_plist)
-            file_menu.add_command(label="Save ({}S)".format(sign), command=self.controller.save_plist)
-            file_menu.add_command(label="Save As ({}Shift+S)".format(sign), command=self.controller.save_plist_as)
-            file_menu.add_command(label="Duplicate ({}D)".format(sign), command=self.controller.duplicate_plist)
-            file_menu.add_command(label="Reload From Disk ({}L)".format(sign), command=self.reload_from_disk)
+            file_menu.add_command(label="New", command=self.controller.new_plist, accelerator="Ctrl+N")
+            file_menu.add_command(label="Open", command=self.controller.open_plist, accelerator="Ctrl+O")
+            file_menu.add_command(label="Save", command=self.controller.save_plist, accelerator="Ctrl+S")
+            file_menu.add_command(label="Save As...", command=self.controller.save_plist_as, accelerator="Ctrl+Shift+S")
+            file_menu.add_command(label="Duplicate", command=self.controller.duplicate_plist, accelerator="Ctrl+D")
+            file_menu.add_command(label="Reload From Disk", command=self.reload_from_disk, accelerator="Ctrl+L")
             file_menu.add_separator()
-            file_menu.add_command(label="OC Snapshot ({}R)".format(sign), command=self.oc_snapshot)
-            file_menu.add_command(label="OC Clean Snapshot ({}Shift+R)".format(sign), command=self.oc_clean_snapshot)
+            file_menu.add_command(label="OC Snapshot", command=self.oc_snapshot, accelerator="Ctrl+R")
+            file_menu.add_command(label="OC Clean Snapshot", command=self.oc_clean_snapshot, accelerator="Ctrl+Shift+R")
             file_menu.add_separator()
-            file_menu.add_command(label="Convert Window ({}T)".format(sign), command=self.controller.show_convert)
-            file_menu.add_command(label="Strip Comments ({}M)".format(sign), command=self.strip_comments)
+            file_menu.add_command(label="Convert Window", command=self.controller.show_convert, accelerator="Ctrl+T")
+            file_menu.add_command(label="Strip Comments", command=self.strip_comments, accelerator="Ctrl+M")
+            file_menu.add_command(label="Strip Disabled Entries", command=self.strip_disabled, accelerator="Ctrl+E")
             file_menu.add_separator()
-            file_menu.add_command(label="Settings ({},)".format(sign),command=self.controller.show_settings)
+            file_menu.add_command(label="Settings",command=self.controller.show_settings, accelerator="Ctrl+,")
             file_menu.add_separator()
-            file_menu.add_command(label="Toggle Find/Replace Pane ({}F)".format(sign),command=self.hide_show_find)
-            file_menu.add_command(label="Toggle Plist/Data Type Pane ({}P)".format(sign),command=self.hide_show_type)
-            if not str(sys.platform) == "darwin":
-                file_menu.add_separator()
-                file_menu.add_command(label="Quit ({}Q)".format(sign), command=self.controller.quit)
+            file_menu.add_command(label="Toggle Find/Replace Pane",command=self.hide_show_find, accelerator="Ctrl+F")
+            file_menu.add_command(label="Toggle Plist/Data Type Pane",command=self.hide_show_type, accelerator="Ctrl+P")
+            file_menu.add_separator()
+            file_menu.add_command(label="Quit", command=self.controller.quit, accelerator="Ctrl+Q")
             self.config(menu=main_menu)
 
         # Get the right click menu options
@@ -839,11 +837,12 @@ class PlistWindow(tk.Toplevel):
             if not os.path.isdir(kdir):
                 continue
             kdict = {
+                "Arch":"Any",
+                "BundlePath":parent+"/"+x if len(parent) else x,
                 "Comment":"",
                 "Enabled":True,
                 "MaxKernel":"",
                 "MinKernel":"",
-                "BundlePath":parent+"/"+x if len(parent) else x,
                 "ExecutablePath":""
             }
             kinfo = {}
@@ -1044,6 +1043,32 @@ class PlistWindow(tk.Toplevel):
             if mb.askyesno("Disabled Parent Kexts","Enable the following disabled parent kexts?\n\n{}".format("\n".join(disabled_parents)),parent=self):
                 for x in ordered_kexts: # Walk our kexts and enable the parents
                     if x.get("BundlePath","") in disabled_parents: x["Enabled"] = True
+        # Finally - we walk the kexts and ensure that we're not loading the same CFBundleIdentifier more than once
+        enabled_ids = []
+        duplicate_bundles = []
+        duplicates_disabled = []
+        for kext in ordered_kexts:
+            temp_kext = {}
+            # Shallow copy the kext entry to avoid changing it in ordered_kexts
+            for x in kext: temp_kext[x] = kext[x]
+            duplicates_disabled.append(temp_kext)
+            # Ignore if alreday disabled
+            if not temp_kext.get("Enabled",False): continue
+            # Get the original info
+            info = next((x for x in kext_list if x[0].get("BundlePath","") == temp_kext.get("BundlePath","")),None)
+            if not info or not info[1].get("CFBundleIdentifier",None): continue # Broken info
+            # Let's see if it's already in enabled_ids - which is just a list of CFBundleIdentifier values
+            if info[1]["CFBundleIdentifier"] in enabled_ids:
+                # Already exists - set it to disabled, and add the bundle path to the duplicate_bundles list
+                temp_kext["Enabled"] = False
+                duplicate_bundles.append(temp_kext.get("BundlePath",""))
+            else:
+                # Doesn't already exist - add it to the enabled_ids list
+                enabled_ids.append(info[1]["CFBundleIdentifier"])
+        # Check if we have duplicates - and offer to disable them
+        if len(duplicate_bundles):
+            if mb.askyesno("Duplicate CFBundleIdentifiers","Disable the following kexts with duplicate CFBundleIdentifiers?\n\n{}".format("\n".join(duplicate_bundles)),parent=self):
+                ordered_kexts = duplicates_disabled
 
         tree_dict["Kernel"]["Add"] = ordered_kexts
 
@@ -1408,6 +1433,41 @@ class PlistWindow(tk.Toplevel):
         self.update_all_children()
         self.alternate_colors()
 
+    def strip_disabled(self, event=None):
+        # Strips out dicts if they contain Enabled = False, or Disabled = True
+        nodes = self.iter_nodes(False)
+        root = self.get_root_node()
+        removedlist = []
+        for node in nodes:
+            name = str(self._tree.item(node,"text")).lower()
+            values = self.get_padded_values(node, 3)
+            value = values[1]
+            check_type = self.get_check_type(node).lower()
+            if check_type=="boolean" and (name=="enabled" and value=="False") or (name=="disabled" and value=="True"):
+                # Found one, remove its parent
+                rem_node = self._tree.parent(node)
+                if root in (node, rem_node):
+                    # Can't remove the root - skip it
+                    continue
+                removedlist.append({
+                    "type":"remove",
+                    "cell":rem_node,
+                    "from":self._tree.parent(rem_node),
+                    "index":self._tree.index(rem_node)
+                })
+                self._tree.detach(rem_node)
+        if not len(removedlist):
+            # Nothing removed
+            return
+        # We removed some, flush the changes, update the view,
+        # post the undo, and make sure we're edited
+        self.add_undo(removedlist)
+        if not self.edited:
+            self.edited = True
+            self.title(self.title()+" - Edited")
+        self.update_all_children()
+        self.alternate_colors()
+
     ###                       ###
     # Save/Load Plist Functions #
     ###                       ###
@@ -1603,7 +1663,16 @@ class PlistWindow(tk.Toplevel):
             plist_data = plist.loads(clip,dict_type=dict if self.controller.settings.get("sort_dict",False) else OrderedDict)
         except:
             # May need the header
-            cb = self.plist_header + "\n" + clip + "\n" + self.plist_footer
+            # First check the type of the first element
+            clip_check = clip.strip().lower()
+            cb_list = [self.plist_header,clip,self.plist_footer]
+            # If we start with a key, assume it's a dict.  If we don't start with an array but have multiple newline-delimited elements, assume an array
+            # - for all else, let the type remain
+            element_type = "dict" if clip_check.startswith("<key>") else "array" if not clip_check.startswith("<array>") and len(clip_check.split("\n")) > 1 else None
+            if element_type:
+                cb_list.insert(1,"<{}>".format(element_type))
+                cb_list.insert(3,"</{}>".format(element_type))
+            cb = "\n".join(cb_list)
             try:
                 plist_data = plist.loads(cb,dict_type=dict if self.controller.settings.get("sort_dict",False) else OrderedDict)
             except Exception as e:
@@ -2195,29 +2264,29 @@ class PlistWindow(tk.Toplevel):
         popup_menu.add_command(label="Expand All", command=self.expand_all)
         popup_menu.add_command(label="Collapse All", command=self.collapse_all)
         popup_menu.add_separator()
+        is_mac = sys.platform == "darwin"
         # Determine if we are adding a child or a sibling
         if cell in ("",self.get_root_node()):
             # Top level - get the Root
             if self.get_check_type(self.get_root_node()).lower() in ("array","dictionary"):
-                popup_menu.add_command(label="New top level entry (+)".format(self._tree.item(cell,"text")), command=lambda:self.new_row(self.get_root_node()))
+                popup_menu.add_command(label="New top level entry{}".format(" (+)" if is_mac else ""), command=lambda:self.new_row(self.get_root_node()),accelerator=None if is_mac else "(+)")
         else:
             if self.get_check_type(cell).lower() in ["array","dictionary"] and (self._tree.item(cell,"open") or not len(self._tree.get_children(cell))):
-                popup_menu.add_command(label="New child under '{}' (+)".format(self._tree.item(cell,"text")), command=lambda:self.new_row(cell))
+                popup_menu.add_command(label="New child under '{}'{}".format(self._tree.item(cell,"text")," (+)" if is_mac else ""), command=lambda:self.new_row(cell),accelerator=None if is_mac else "(+)")
                 popup_menu.add_command(label="New sibling of '{}'".format(self._tree.item(cell,"text")), command=lambda:self.new_row(cell,True))
-                popup_menu.add_command(label="Remove '{}' and any children (-)".format(self._tree.item(cell,"text")), command=lambda:self.remove_row(cell))
+                popup_menu.add_command(label="Remove '{}' and any children{}".format(self._tree.item(cell,"text")," (-)" if is_mac else ""), command=lambda:self.remove_row(cell),accelerator=None if is_mac else "(-)")
             else:
-                popup_menu.add_command(label="New sibling of '{}' (+)".format(self._tree.item(cell,"text")), command=lambda:self.new_row(cell))
-                popup_menu.add_command(label="Remove '{}' (-)".format(self._tree.item(cell,"text")), command=lambda:self.remove_row(cell))
+                popup_menu.add_command(label="New sibling of '{}'{}".format(self._tree.item(cell,"text")," (+)" if is_mac else ""), command=lambda:self.new_row(cell),accelerator=None if is_mac else "(+)")
+                popup_menu.add_command(label="Remove '{}'{}".format(self._tree.item(cell,"text")," (-)" if is_mac else ""), command=lambda:self.remove_row(cell),accelerator=None if is_mac else "(-)")
         # Add the copy and paste options
         popup_menu.add_separator()
-        sign = "Command" if str(sys.platform) == "darwin" else "Ctrl"
         c_state = "normal" if len(self._tree.selection()) else "disabled"
         try: p_state = "normal" if len(self.root.clipboard_get()) else "disabled"
         except: p_state = "disabled" # Invalid clipboard content
-        popup_menu.add_command(label="Copy ({}+C)".format(sign),command=self.copy_selection,state=c_state)
+        popup_menu.add_command(label="Copy{}".format(" (Cmd+C)" if is_mac else ""),command=self.copy_selection,state=c_state,accelerator=None if is_mac else "(Ctrl+C)")
         if not cell in ("",self.get_root_node()) and self.get_check_type(cell).lower() in ["array","dictionary"]:
             popup_menu.add_command(label="Copy Children", command=self.copy_children,state=c_state)
-        popup_menu.add_command(label="Paste ({}+V)".format(sign),command=self.paste_selection,state=p_state)
+        popup_menu.add_command(label="Paste{}".format(" (Cmd+V)" if is_mac else ""),command=self.paste_selection,state=p_state,accelerator=None if is_mac else "(Ctrl+V)")
         
         # Walk through the menu data if it exists
         cell_path = self.get_cell_path(cell)
