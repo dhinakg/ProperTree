@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import sys, os, plistlib, base64, binascii, datetime, tempfile, shutil, re, itertools, math
+import sys, os, plistlib, base64, binascii, datetime, tempfile, shutil, re, itertools, math, hashlib
 from collections import OrderedDict
 try:
     # Python 2
@@ -699,9 +699,8 @@ class PlistWindow(tk.Toplevel):
         matches = self.find_all(type_check[1])
         if not len(matches):
             # Nothing found - let's throw an error
-            if not replacing:
-                self.bell()
-                mb.showerror("No Matches Found", '"{}" did not match any {} fields in the current plist.'.format(type_check[1],self.find_type.lower()),parent=self)
+            self.bell()
+            mb.showerror("No Matches Found", '"{}" did not match any {} fields in the current plist.'.format(type_check[1],self.find_type.lower()),parent=self)
             return None
         # Let's get the index of our selected item
         node  = "" if not len(self._tree.selection()) else self._tree.selection()[0]
@@ -822,7 +821,7 @@ class PlistWindow(tk.Toplevel):
         # We should have the plist data now
         self.open_plist(self.current_plist,plist_data, self.plist_type_string.get())
 
-    def walk_kexts(self,path,parent=""):
+    def walk_kexts(self,path,parent="",kext_add={}):
         kexts = []
         # Let's make sure we check Lilu first if it exists
         kext_list   = sorted([x for x in os.listdir(path) if not x.lower() in ("fakesmc.kext","lilu.kext","virtualsmc.kext")])
@@ -837,14 +836,16 @@ class PlistWindow(tk.Toplevel):
             if not os.path.isdir(kdir):
                 continue
             kdict = {
-                "Arch":"Any",
+                # "Arch":"Any",
                 "BundlePath":parent+"/"+x if len(parent) else x,
                 "Comment":"",
                 "Enabled":True,
-                "MaxKernel":"",
-                "MinKernel":"",
+                # "MaxKernel":"",
+                # "MinKernel":"",
                 "ExecutablePath":""
             }
+            # Add our entries from kext_add as needed
+            for y in kext_add: kdict[y] = kext_add[y]
             kinfo = {}
             # Get the Info.plist
             plist_rel_path = plist_full_path = None
@@ -872,7 +873,7 @@ class PlistWindow(tk.Toplevel):
             # Check if we have a PlugIns folder
             pdir = kdir+"/Contents/PlugIns"
             if os.path.exists(pdir) and os.path.isdir(pdir):
-                kexts.extend(self.walk_kexts(pdir,(parent+"/"+x if len(parent) else x)+"/Contents/PlugIns"))
+                kexts.extend(self.walk_kexts(pdir,(parent+"/"+x if len(parent) else x)+"/Contents/PlugIns",kext_add=kext_add))
         return kexts
 
     def oc_clean_snapshot(self, event = None):
@@ -901,18 +902,61 @@ class PlistWindow(tk.Toplevel):
         oc_drivers = os.path.join(oc_folder,"Drivers")
         oc_kexts   = os.path.join(oc_folder,"Kexts")
         oc_tools   = os.path.join(oc_folder,"Tools")
+        oc_efi     = os.path.join(oc_folder,"OpenCore.efi")
 
         for x in [oc_acpi,oc_drivers,oc_kexts]:
             if not os.path.exists(x):
                 self.bell()
                 mb.showerror("Incorrect OC Folder Struction", "{} does not exist.".format(x), parent=self)
                 return
-            if not os.path.isdir(x):
+            if x != oc_efi and not os.path.isdir(x):
                 self.bell()
                 mb.showerror("Incorrect OC Folder Struction", "{} exists, but is not a directory.".format(x), parent=self)
                 return
 
         # Folders are valid - lets work through each section
+
+        # Let's get the hash of OpenCore.efi, compare to a known list, and then compare that version to our snapshot_version if found
+        hasher = hashlib.md5()
+        try:
+            with open(oc_efi,"rb") as f:
+                hasher.update(f.read())
+            oc_hash = hasher.hexdigest()
+        except:
+            oc_hash = "" # Couldn't determine hash :(
+        # Let's get the version of the snapshot that matches our target, and that matches our hash if any
+        latest_snap = {} # Highest min_version
+        target_snap = {} # Matches our hash
+        select_snap = {} # Whatever the user selected
+        user_snap   = self.controller.settings.get("snapshot_version","Latest")
+        for snap in self.controller.snapshot_data:
+            hashes = snap.get("release_hashes",[])
+            hashes.extend(snap.get("debug_hashes",[]))
+            # Retain the highest version we see
+            if snap.get("min_version","0.0.0") > latest_snap.get("min_version","0.0.0"):
+                latest_snap = snap
+            # Also retain the last snap that matches our hash
+            if len(oc_hash) and (oc_hash in snap.get("release_hashes",[]) or oc_hash in snap.get("debug_hashes",[])):
+                target_snap = snap
+            # Save the snap that matches the user's choice too if not Latest
+            if user_snap.lower() != "latest" and user_snap >= snap.get("min_version","0.0.0") and snap.get("min_version","0.0.0") > select_snap.get("min_version","0.0.0"):
+                select_snap = snap
+        if user_snap.lower() == "latest" or not select_snap:
+            select_snap = latest_snap
+        if target_snap and target_snap != select_snap: # Version mismatch - warn
+            found_ver  = "{} -> {}".format(target_snap.get("min_version","0.0.0"),target_snap.get("max_version","Current"))
+            select_ver = "{} -> {}".format(select_snap.get("min_version","0.0.0"),select_snap.get("max_version","Current"))
+            if mb.askyesno("Snapshot Version Mismatch","Found OC version: {}\nTarget snapshot version: {}\n\nWould you like to snapshot for {} instead?".format(
+                found_ver,
+                select_ver,
+                found_ver
+            ),parent=self):
+                # We want to change for this snapshot
+                select_snap = target_snap
+        # Apply our snapshot values
+        acpi_add = select_snap.get("acpi_add",{})
+        kext_add = select_snap.get("kext_add",{})
+        tool_add = select_snap.get("tool_add",{})
 
         # ACPI is first, we'll iterate the .aml files we have and add what is missing
         # while also removing what exists in the plist and not in the folder.
@@ -939,11 +983,14 @@ class PlistWindow(tk.Toplevel):
                 # Found it - skip
                 continue
             # Doesn't exist, add it
-            add.append({
-                "Enabled":True,
+            new_aml_entry = {
                 "Comment":os.path.basename(aml),
+                "Enabled":True,
                 "Path":aml
-            })
+            }
+            # Add our snapshot custom entries, if any
+            for x in acpi_add: new_aml_entry[x] = acpi_add[x]
+            add.append(new_aml_entry)
         new_add = []
         for aml in add:
             if not isinstance(aml,dict):
@@ -982,7 +1029,7 @@ class PlistWindow(tk.Toplevel):
             tree_dict["Kernel"] = {"Add":[]}
         if not "Add" in tree_dict["Kernel"] or not isinstance(tree_dict["Kernel"]["Add"],list):
             tree_dict["Kernel"]["Add"] = []
-        kext_list = self.walk_kexts(oc_kexts)
+        kext_list = self.walk_kexts(oc_kexts,kext_add=kext_add)
         bundle_list = [x[0].get("BundlePath","") for x in kext_list]
         kexts = [] if clean else tree_dict["Kernel"]["Add"]
         original_kexts = [x for x in kexts if x.get("BundlePath","") in bundle_list] # get the original load order for comparison purposes - but omit any that no longer exist
@@ -1084,14 +1131,17 @@ class PlistWindow(tk.Toplevel):
                 for name in files:
                     if not name.startswith(".") and name.lower().endswith(".efi"):
                         # Save it
-                        tools_list.append({
-                            "Arguments":"",
-                            "Auxiliary":True,
+                        new_tool_entry = {
+                            # "Arguments":"",
+                            # "Auxiliary":True,
                             "Name":name,
                             "Comment":name,
                             "Enabled":True,
                             "Path":os.path.join(path,name)[len(oc_tools):].replace("\\", "/").lstrip("/") # Strip the /Volumes/EFI/
-                        })
+                        }
+                        # Add our snapshot custom entries, if any
+                        for x in tool_add: new_tool_entry[x] = tool_add[x]
+                        tools_list.append(new_tool_entry)
             tools = [] if clean else tree_dict["Misc"]["Tools"]
             for tool in sorted(tools_list, key=lambda x: x.get("Path","").lower()):
                 if tool["Path"].lower() in [x.get("Path","").lower() for x in tools if isinstance(x,dict)]:
@@ -1113,6 +1163,16 @@ class PlistWindow(tk.Toplevel):
             # Make sure our Tools list is empty
             tree_dict["Misc"]["Tools"] = []
 
+        # Check if we're forcing schema - and ensure values line up
+        if self.controller.settings.get("force_snapshot_schema",False):
+            ignored = ["Comment","Enabled","Path","BundlePath","ExecutablePath","PlistPath","Name"]
+            for entries,values in ((tree_dict["ACPI"]["Add"],acpi_add),(tree_dict["Kernel"]["Add"],kext_add),(tree_dict["Misc"]["Tools"],tool_add)):
+                for entry in entries:
+                    to_remove = [x for x in entry if not x in values and not x in ignored]
+                    to_add =    [x for x in values if not x in entry and not x in ignored]
+                    for add in to_add:    entry[add] = values[add]
+                    for rem in to_remove: entry.pop(rem,None)
+        
         # Now we remove the original tree - then replace it
         undo_list = []
         for x in self._tree.get_children():
@@ -1908,7 +1968,7 @@ class PlistWindow(tk.Toplevel):
             return # Can't add to a non-collection!
         values = self.get_padded_values(target, 1)
         new_cell = None
-        if not self.get_check_type(target).lower() in ["dictionary","array"] or not self._tree.item(target,"open") or force_sibling:
+        if not self.get_check_type(target).lower() in ["dictionary","array"] or force_sibling or (not self._tree.item(target,"open") and len(self._tree.get_children(target))):
             target = self._tree.parent(target)
         # create a unique name
         names = [self._tree.item(x,"text")for x in self._tree.get_children(target)]
