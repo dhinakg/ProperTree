@@ -876,6 +876,33 @@ class PlistWindow(tk.Toplevel):
                 kexts.extend(self.walk_kexts(pdir,(parent+"/"+x if len(parent) else x)+"/Contents/PlugIns",kext_add=kext_add))
         return kexts
 
+    def get_min_max_from_match(self, match_text):
+        # Helper method to take MatchKernel output and break it into the MinKernel and MaxKernel
+        temp_min = "0.0.0"
+        temp_max = "99.99.99"
+        match_text = "" if match_text == "1" else match_text # Strip out "1" in prefix matching to match any
+        if match_text != "":
+            try:
+                min_list = match_text.split(".")
+                max_list = [x for x in min_list]
+                min_list += ["0"] * (3-len(min_list)) # pad it out with 0s for min
+                min_list = [x if len(x) else "0" for x in min_list] # Ensure all blanks are 0s too
+                max_list += ["99"] * (3-len(max_list)) # pad it with 99s for max
+                max_list = [x if len(x) else "99" for x in max_list] # Ensure all blanks are 0s too
+                temp_min = ".".join(min_list)
+                temp_max = ".".join(max_list)
+            except: pass # Broken formatting - it seems
+        return (temp_min,temp_max)
+
+    def get_min_max_from_kext(self, kext, use_match = False):
+        # Helper to get the min/max kernel versions
+        if use_match: return self.get_min_max_from_match(kext.get("MatchKernel",""))
+        temp_min = kext.get("MinKernel","0.0.0")
+        temp_max = kext.get("MaxKernel","99.99.99")
+        temp_min = "0.0.0" if temp_min == "" else temp_min
+        temp_max = "99.99.99" if temp_max == "" else temp_max
+        return (temp_min,temp_max)
+
     def oc_clean_snapshot(self, event = None):
         self.oc_snapshot(event,True)
 
@@ -1091,7 +1118,7 @@ class PlistWindow(tk.Toplevel):
                 for x in ordered_kexts: # Walk our kexts and enable the parents
                     if x.get("BundlePath","") in disabled_parents: x["Enabled"] = True
         # Finally - we walk the kexts and ensure that we're not loading the same CFBundleIdentifier more than once
-        enabled_ids = []
+        enabled_kexts = []
         duplicate_bundles = []
         duplicates_disabled = []
         for kext in ordered_kexts:
@@ -1104,14 +1131,25 @@ class PlistWindow(tk.Toplevel):
             # Get the original info
             info = next((x for x in kext_list if x[0].get("BundlePath","") == temp_kext.get("BundlePath","")),None)
             if not info or not info[1].get("CFBundleIdentifier",None): continue # Broken info
-            # Let's see if it's already in enabled_ids - which is just a list of CFBundleIdentifier values
-            if info[1]["CFBundleIdentifier"] in enabled_ids:
-                # Already exists - set it to disabled, and add the bundle path to the duplicate_bundles list
+            # Let's see if it's already in enabled_kexts - and compare the Min/Max/Match Kernel options
+            temp_min,temp_max = self.get_min_max_from_kext(temp_kext,"MatchKernel" in kext_add)
+            # Gather a list of like IDs
+            comp_kexts = [x for x in enabled_kexts if x[1]["CFBundleIdentifier"] == info[1]["CFBundleIdentifier"]]
+            # Walk the comp_kexts, and disable if we find an overlap
+            for comp_info in comp_kexts:
+                comp_kext = comp_info[0]
+                # Gather our min/max
+                comp_min,comp_max = self.get_min_max_from_kext(comp_kext,"MatchKernel" in kext_add)
+                # Let's see if we don't overlap
+                if temp_min > comp_max or temp_max < comp_min: # We're good, continue
+                    continue
+                # We overlapped - let's disable it
                 temp_kext["Enabled"] = False
+                # Add it to the list - then break out of this loop
                 duplicate_bundles.append(temp_kext.get("BundlePath",""))
-            else:
-                # Doesn't already exist - add it to the enabled_ids list
-                enabled_ids.append(info[1]["CFBundleIdentifier"])
+                break
+            # Check if we ended up disabling temp_kext, and if not - add it to the enabled_kexts list
+            if temp_kext.get("Enabled",False): enabled_kexts.append((temp_kext,info[1]))
         # Check if we have duplicates - and offer to disable them
         if len(duplicate_bundles):
             if mb.askyesno("Duplicate CFBundleIdentifiers","Disable the following kexts with duplicate CFBundleIdentifiers?\n\n{}".format("\n".join(duplicate_bundles)),parent=self):
@@ -1466,12 +1504,20 @@ class PlistWindow(tk.Toplevel):
         self.drag_undo = None
         self.alternate_colors()
 
-    def strip_comments(self, event=None, prefix = "#"):
-        # Strips out any values attached to keys beginning with "#"
+    def strip_comments(self, event=None):
+        # Strips out any values attached to keys beginning with the prefix
         nodes = self.iter_nodes(False)
         removedlist = []
+        # Find out if we should ignore case
+        ignore_case = True if self.controller.comment_ignore_case.get() else False
+        # Get the current prefix - and default to "#" if needed
+        prefix = self.controller.comment_prefix_text.get()
+        # Normalize the case if needed as well
+        prefix = "#" if not prefix else prefix.lower() if ignore_case else prefix
         for node in nodes:
+            if node == self.get_root_node(): continue # Can't strip the root node
             name = self._tree.item(node,"text")
+            name = name.lower() if ignore_case else name # Normalize case if needed
             if str(name).startswith(prefix):
                 # Found one, remove it
                 removedlist.append({
