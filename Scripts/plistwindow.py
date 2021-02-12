@@ -15,6 +15,10 @@ except ImportError:
     from tkinter import filedialog as fd
     from tkinter import messagebox as mb
     from itertools import zip_longest as izip
+try:
+    from tkinter.font import Font
+except:
+    from tkFont import Font
 from . import plist
 
 try:
@@ -276,6 +280,11 @@ class PlistWindow(tk.Toplevel):
         self.style = ttk.Style()
         # Treeview theming is horribly broken in Windows for whatever reasons...
         self.style_name = "Corp.TLabel" if os.name=="nt" else "Corp.Treeview"
+
+        # Fix font height for High-DPI displays
+        font = Font(font='TkTextFont')
+        fontheight = font.metrics()['linespace']
+        self.style.configure(self.style_name, font=font, rowheight=int(math.ceil(fontheight*(1.125 if str(sys.platform)=="darwin" else 1.3))))
 
         # Create the treeview
         self._tree_frame = tk.Frame(self)
@@ -1736,7 +1745,7 @@ class PlistWindow(tk.Toplevel):
         self.select(root)
         # self.after(10, self.alternate_colors)
 
-    def close_window(self, event=None):
+    def close_window(self, event=None, check_close = True):
         # Check if we need to save first, then quit if we didn't cancel
         if self.saving or self.check_save() == None:
             # User cancelled or we failed to save, bail
@@ -1745,7 +1754,7 @@ class PlistWindow(tk.Toplevel):
         windows = self.stackorder(self.root)
         if len(windows) == 1 and windows[0] == self:
             # Last and closing
-            self.controller.close_window(event,True)
+            self.controller.close_window(event,check_close=check_close)
         else:
             self.destroy()
         return True
@@ -2377,10 +2386,10 @@ class PlistWindow(tk.Toplevel):
         self.update_all_children()
         self.alternate_colors()
 
-    def do_sort(self, cell, recursive = False):
+    def do_sort(self, cell, recursive = False, reverse = False):
         undo_tasks = []
         children = self._tree.get_children(cell)
-        sorted_children = sorted([(x,self._tree.item(x,"text")) for x in children],key=lambda x:x[1].lower())
+        sorted_children = sorted([(x,self._tree.item(x,"text")) for x in children],key=lambda x:x[1].lower(), reverse=reverse)
         for index,child in enumerate(sorted_children):
             if self.get_check_type(child[0]).lower() in ("dictionary","array"):
                 undo_tasks.extend(self.do_sort(child[0],recursive))
@@ -2396,9 +2405,13 @@ class PlistWindow(tk.Toplevel):
             self._tree.move(child[0], cell, index)
         return undo_tasks
 
-    def sort_keys(self, cell, recursive = False):
+    def sort_keys(self, cell, recursive = False, reverse = False):
         # Let's build a sorted list of keys, then generate move edits for each
-        undo_tasks = self.do_sort(cell,recursive)
+        undo_tasks = self.do_sort(cell,recursive=recursive,reverse=reverse)
+        if not len(undo_tasks): return # Nothing changed - bail
+        if not self.edited:
+            self.edited = True
+            self.title(self.title()+" - Edited")
         self.add_undo(undo_tasks)
         self.alternate_colors()
 
@@ -2440,9 +2453,11 @@ class PlistWindow(tk.Toplevel):
             # Find out if we can recursively start with the cell, or if we need to start with the parent
             recurs_target = cell if self.get_check_type(cell).lower() in ("dictionary","array") and len(self._tree.get_children(cell)) else parent
             popup_menu.add_command(label="Recursively sort keys starting at '{}'".format(self._tree.item(recurs_target,"text")), command=lambda:self.sort_keys(recurs_target,recursive=True))
+            popup_menu.add_command(label="Recursively reverse sort keys starting at '{}'".format(self._tree.item(recurs_target,"text")), command=lambda:self.sort_keys(recurs_target,recursive=True,reverse=True))
             # Check the actual cell
             sort_target = cell if cell in ("",self.get_root_node()) or (self.get_check_type(cell).lower() == "dictionary" and len(self._tree.get_children(cell))>1) else self._tree.parent(cell)
             popup_menu.add_command(label="Sort keys in '{}'".format(self._tree.item(sort_target,"text")), command=lambda:self.sort_keys(sort_target))
+            popup_menu.add_command(label="Reverse sort keys in '{}'".format(self._tree.item(sort_target,"text")), command=lambda:self.sort_keys(sort_target,reverse=True))
             
         # Add the copy and paste options
         popup_menu.add_separator()
