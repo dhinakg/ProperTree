@@ -48,7 +48,8 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: "3.x"
-      - run: python3 -c "import tkinter; print(tkinter.Tcl().eval('info patchlevel'))"
+      - name: Check Tk version
+        run: python3 -c "import tkinter; print(tkinter.Tcl().eval('info patchlevel'))"
       - name: Install Python Dependencies
         run: |
           python3 -m pip install -U pip
