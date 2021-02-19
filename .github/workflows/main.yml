@@ -14,11 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Set up Python 3
-        uses: actions/setup-python@v2
-        with:
-          python-version: "3.x"
-      - run: python3 -c "import tkinter; print(tkinter.Tcl().eval('info patchlevel'))"
+      # Do not use setup-python. We want python from brew.
+      - name: Check Tk version
+        run: python3 -c "import tkinter; print(tkinter.Tcl().eval('info patchlevel'))"
       - name: Install Python Dependencies
         run: |
           python3 -m pip install -U pip
