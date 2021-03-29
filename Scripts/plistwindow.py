@@ -356,11 +356,11 @@ class PlistWindow(tk.Toplevel):
             file_menu.add_command(label="OC Snapshot", command=self.oc_snapshot, accelerator="Ctrl+R")
             file_menu.add_command(label="OC Clean Snapshot", command=self.oc_clean_snapshot, accelerator="Ctrl+Shift+R")
             file_menu.add_separator()
-            file_menu.add_command(label="Convert Window", command=self.controller.show_convert, accelerator="Ctrl+T")
+            file_menu.add_command(label="Convert Window", command=lambda:self.controller.show_window(self.controller.tk), accelerator="Ctrl+T")
             file_menu.add_command(label="Strip Comments", command=self.strip_comments, accelerator="Ctrl+M")
             file_menu.add_command(label="Strip Disabled Entries", command=self.strip_disabled, accelerator="Ctrl+E")
             file_menu.add_separator()
-            file_menu.add_command(label="Settings",command=self.controller.show_settings, accelerator="Ctrl+,")
+            file_menu.add_command(label="Settings",command=lambda:self.controller.show_window(self.controller.settings_window), accelerator="Ctrl+,")
             file_menu.add_separator()
             file_menu.add_command(label="Toggle Find/Replace Pane",command=self.hide_show_find, accelerator="Ctrl+F")
             file_menu.add_command(label="Toggle Plist/Data Type Pane",command=self.hide_show_type, accelerator="Ctrl+P")
@@ -2388,10 +2388,12 @@ class PlistWindow(tk.Toplevel):
     def do_sort(self, cell, recursive = False, reverse = False):
         undo_tasks = []
         children = self._tree.get_children(cell)
-        sorted_children = sorted([(x,self._tree.item(x,"text")) for x in children],key=lambda x:x[1].lower(), reverse=reverse)
+        sorted_children = [(x,self._tree.item(x,"text")) for x in children]
+        if self.get_check_type(cell).lower() == "dictionary":
+            sorted_children = sorted(sorted_children,key=lambda x:x[1].lower(), reverse=reverse)
         for index,child in enumerate(sorted_children):
-            if self.get_check_type(child[0]).lower() in ("dictionary","array"):
-                undo_tasks.extend(self.do_sort(child[0],recursive))
+            if self.get_check_type(child[0]).lower() in ("dictionary","array") and recursive:
+                undo_tasks.extend(self.do_sort(child[0],recursive=recursive,reverse=reverse))
             if child[0] == children[index]: continue # They're the same, nothing to do here
             # Add the move command
             undo_tasks.append({
@@ -2683,27 +2685,15 @@ class PlistWindow(tk.Toplevel):
         # Call the actual alternate_colors function
         self.alternate_colors(event)
 
-    def text_color(self, hex_color):
-        hex_color = hex_color.lower()
-        if hex_color.startswith("0x"): hex_color = hex_color[2:]
-        if hex_color.startswith("#"): hex_color = hex_color[1:]
-        # Check for bogus hex and return "black" by default
-        if len(hex_color) != 6 or not all((x in "0123456789abcdef" for x in hex_color)): return "black"
-        # Get the r, g, and b values and determine our fake luminance
-        r = float(int(hex_color[0:2],16))
-        g = float(int(hex_color[2:4],16))
-        b = float(int(hex_color[4:6],16))
-        return "black" if (r*0.299 + g*0.587 + b*0.114) > 186 else "white"
-
     def set_colors(self, event = None):
         # Setup the colors and styles
         self.r1 = self.controller.r1_canvas["background"]
         self.r2 = self.controller.r2_canvas["background"]
         self.hl = self.controller.hl_canvas["background"]
         self.bg = self.controller.bg_canvas["background"]
-        self.r1t = self.text_color(self.r1)
-        self.r2t = self.text_color(self.r2)
-        self.hlt = self.text_color(self.hl)
+        self.r1t = self.controller.text_color(self.r1,invert=self.controller.r1_inv_check.get())
+        self.r2t = self.controller.text_color(self.r2,invert=self.controller.r2_inv_check.get())
+        self.hlt = self.controller.text_color(self.hl,invert=self.controller.hl_inv_check.get())
         self.style.configure(self.style_name, background=self.bg, fieldbackground=self.bg)
         self.style.map(self.style_name, background=[("selected", self.hl)], foreground=[("selected", self.hlt)])
         self._tree.tag_configure('even', foreground=self.r1t, background=self.r1)

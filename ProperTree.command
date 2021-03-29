@@ -35,23 +35,16 @@ class ProperTree:
         # Create the settings window
         self.settings_window = tk.Toplevel(self.tk)
         self.settings_window.title("ProperTree Settings")
-        w = 400
-        h = 530
-        self.settings_window.minsize(width=w,height=h)
         self.settings_window.resizable(False, False)
         self.settings_window.columnconfigure(0,weight=1)
         self.settings_window.columnconfigure(1,weight=1)
-        # Let's also center the window
-        x = self.settings_window.winfo_screenwidth() // 2 - w // 2
-        y = self.settings_window.winfo_screenheight() // 2 - h // 2
-        self.settings_window.geometry("{}x{}+{}+{}".format(w,h, x, y))
         # Let's add some checkboxes and stuffs
         self.expand_on_open = tk.IntVar()
         self.use_xcode_data = tk.IntVar()
         self.sort_dict_keys = tk.IntVar()
         self.comment_ignore_case = tk.IntVar()
         self.comment_check_string = tk.IntVar()
-        self.force_schema   = tk.IntVar()
+        self.force_schema = tk.IntVar()
         self.expand_check = tk.Checkbutton(self.settings_window,text="Expand Children When Opening Plist",variable=self.expand_on_open,command=self.expand_command)
         self.xcode_check = tk.Checkbutton(self.settings_window,text="Use Xcode-Style <data> Tags (Inline) in XML Plists",variable=self.use_xcode_data,command=self.xcode_command)
         self.sort_check = tk.Checkbutton(self.settings_window,text="Ignore Dictionary Key Order",variable=self.sort_dict_keys,command=self.sort_command)
@@ -101,36 +94,56 @@ class ProperTree:
         r4_label.grid(row=14,column=0,sticky="w",padx=10)
         self.hl_canvas = tk.Canvas(self.settings_window, height=20, width=30, background="black", relief="groove", bd=2)
         self.hl_canvas.grid(row=14,column=1,sticky="we",padx=10)
+        self.r1_inv_check = tk.IntVar()
+        self.r1_inv = tk.Checkbutton(self.settings_window,text="Invert Row #1 Text Color",variable=self.r1_inv_check,command=self.check_r1_invert_command)
+        self.r1_inv.grid(row=15,column=1,sticky="w",padx=10)
+        self.r2_inv_check = tk.IntVar()
+        self.r2_inv = tk.Checkbutton(self.settings_window,text="Invert Row #2 Text Color",variable=self.r2_inv_check,command=self.check_r2_invert_command)
+        self.r2_inv.grid(row=16,column=1,sticky="w",padx=10)
+        self.hl_inv_check = tk.IntVar()
+        self.hl_inv = tk.Checkbutton(self.settings_window,text="Invert Highlight Text Color",variable=self.hl_inv_check,command=self.check_hl_invert_command)
+        self.hl_inv.grid(row=17,column=1,sticky="w",padx=10)
         sep_theme = ttk.Separator(self.settings_window,orient="horizontal")
-        sep_theme.grid(row=15,column=0,columnspan=2,sticky="we",padx=10,pady=10)
+        sep_theme.grid(row=18,column=0,columnspan=2,sticky="we",padx=10,pady=10)
         r5_label = tk.Label(self.settings_window,text="Default Theme Options:")
-        r5_label.grid(row=16,column=0,sticky="w",padx=10)
+        r5_label.grid(row=19,column=0,sticky="w",padx=10)
         default_high = tk.Button(self.settings_window,text="Reset Highlight",command=lambda:self.swap_colors("highlight"))
-        default_high.grid(row=17,column=0,sticky="we",padx=10)
+        default_high.grid(row=20,column=0,sticky="we",padx=10)
         default_light = tk.Button(self.settings_window,text="Light Mode Defaults",command=lambda:self.swap_colors("light"))
-        default_light.grid(row=16,column=1,sticky="we",padx=10)
+        default_light.grid(row=19,column=1,sticky="we",padx=10)
         default_dark = tk.Button(self.settings_window,text="Dark Mode Defaults",command=lambda:self.swap_colors("dark"))
-        default_dark.grid(row=17,column=1,sticky="we",padx=10)
+        default_dark.grid(row=20,column=1,sticky="we",padx=10)
         reset_settings = tk.Button(self.settings_window,text="Reset All To Defaults",command=self.reset_settings)
-        reset_settings.grid(row=18,column=1,sticky="e",padx=10,pady=10)
+        reset_settings.grid(row=21,column=1,sticky="we",padx=10,pady=10)
 
         # Setup the color picker click methods
         self.r1_canvas.bind("<ButtonRelease-1>",lambda x:self.pick_color("alternating_color_1",self.r1_canvas))
         self.r2_canvas.bind("<ButtonRelease-1>",lambda x:self.pick_color("alternating_color_2",self.r2_canvas))
         self.hl_canvas.bind("<ButtonRelease-1>",lambda x:self.pick_color("highlight_color",self.hl_canvas))
         self.bg_canvas.bind("<ButtonRelease-1>",lambda x:self.pick_color("background_color",self.bg_canvas))
+
+        # Setup some canvas connections
+        self.canvas_connect = {
+            self.r1_canvas: {"invert":self.r1_inv_check},
+            self.r2_canvas: {"invert":self.r2_inv_check},
+            self.hl_canvas: {"invert":self.hl_inv_check}
+        }
         
         self.default_dark  = {
             "alternating_color_1":"#161616",
             "alternating_color_2":"#202020",
             "highlight_color":"#1E90FF",
-            "background_color":"#161616"
+            "background_color":"#161616",
+            "invert_row1_text_color":False,
+            "invert_row2_text_color":False
         }
         self.default_light = {
             "alternating_color_1":"#F0F1F1",
             "alternating_color_2":"#FEFEFE",
             "highlight_color":"#1E90FF",
-            "background_color":"#FEFEFE"
+            "background_color":"#FEFEFE",
+            "invert_row1_text_color":False,
+            "invert_row2_text_color":False
         }
 
         # Setup the from/to option menus
@@ -177,7 +190,7 @@ class ProperTree:
             # Remap the quit function to our own
             self.tk.createcommand('::tk::mac::Quit', self.quit)
             self.tk.createcommand("::tk::mac::OpenDocument", self.open_plist_from_app)
-            self.tk.createcommand("::tk::mac::ShowPreferences", self.show_settings)
+            self.tk.createcommand("::tk::mac::ShowPreferences", lambda:self.show_window(self.settings_window))
             # Import the needed modules to change the bundle name and force focus
             try:
                 from Foundation import NSBundle
@@ -217,11 +230,11 @@ class ProperTree:
             file_menu.add_command(label="OC Snapshot (Cmd+R)", command=self.oc_snapshot)
             file_menu.add_command(label="OC Clean Snapshot (Cmd+Shift+R)", command=self.oc_clean_snapshot)
             file_menu.add_separator()
-            file_menu.add_command(label="Convert Window (Cmd+T)", command=self.show_convert)
+            file_menu.add_command(label="Convert Window (Cmd+T)", command=lambda:self.show_window(self.tk))
             file_menu.add_command(label="Strip Comments (Cmd+M)", command=self.strip_comments)
             file_menu.add_command(label="Strip Disabled Entries (Cmd+E)", command=self.strip_disabled)
             file_menu.add_separator()
-            file_menu.add_command(label="Settings (Cmd+,)",command=self.show_settings)
+            file_menu.add_command(label="Settings (Cmd+,)",command=lambda:self.show_window(self.settings_window))
             file_menu.add_separator()
             file_menu.add_command(label="Toggle Find/Replace Pane (Cmd+F)",command=self.hide_show_find)
             file_menu.add_command(label="Toggle Plist/Data Type Pane (Cmd+P)",command=self.hide_show_type)
@@ -238,7 +251,7 @@ class ProperTree:
         self.tk.bind_all("<{}-s>".format(key), self.save_plist)
         self.tk.bind_all("<Shift-{}-s>".format(key) if tk.TkVersion >= 8.6 and str(sys.platform)=="darwin" else "<{}-S>".format(key), self.save_plist_as)
         self.tk.bind_all("<{}-d>".format(key), self.duplicate_plist)
-        self.tk.bind_all("<{}-t>".format(key), self.show_convert)
+        self.tk.bind_all("<{}-t>".format(key), lambda event, x=self.tk: self.show_window(x))
         self.tk.bind_all("<{}-z>".format(key), self.undo)
         self.tk.bind_all("<Shift-{}-z>".format(key) if tk.TkVersion >= 8.6 and str(sys.platform)=="darwin" else "<{}-Z>".format(key), self.redo)
         self.tk.bind_all("<{}-m>".format(key), self.strip_comments)
@@ -249,7 +262,7 @@ class ProperTree:
         if not str(sys.platform) == "darwin":
             # Rewrite the default Command-Q command
             self.tk.bind_all("<{}-q>".format(key), self.quit)
-            self.tk.bind_all("<{}-comma>".format(key), self.show_settings)
+            self.tk.bind_all("<{}-comma>".format(key), lambda event, x=self.settings_window:self.show_window(x))
         
         cwd = os.getcwd()
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
@@ -272,6 +285,9 @@ class ProperTree:
         # alternating_color_2:        string, Dark: #202020 - Light: #FEFEFE
         # highlight_color:            string, Dark: #1E90FF - Light: #1E90FF
         # background_color:           string, Dark: #161616 - Light: #FEFEFE
+        # invert_row1_text_color:     bool
+        # invert_row2_text_color:     bool
+        # invert_hl_text_color:       bool
         #
         if not getattr(sys, 'frozen', False):
             self.settings_path = "Scripts/"
@@ -336,6 +352,21 @@ class ProperTree:
         c = p.communicate()
         return c[0].decode("utf-8", "ignore").strip().lower() == "dark"
 
+    def text_color(self, hex_color, invert = False):
+        hex_color = hex_color.lower()
+        if hex_color.startswith("0x"): hex_color = hex_color[2:]
+        if hex_color.startswith("#"): hex_color = hex_color[1:]
+        # Check for bogus hex and return "black" by default
+        if len(hex_color) != 6 or not all((x in "0123456789abcdef" for x in hex_color)):
+            return "white" if invert else "black"
+        # Get the r, g, and b values and determine our fake luminance
+        r = float(int(hex_color[0:2],16))
+        g = float(int(hex_color[2:4],16))
+        b = float(int(hex_color[4:6],16))
+        l = (r*0.299 + g*0.587 + b*0.114) > 186
+        if l: return "white" if invert else "black"
+        return "black" if invert else "white"
+
     def expand_command(self, event = None):
         self.settings["expand_all_items_on_open"] = True if self.expand_on_open.get() else False
 
@@ -350,6 +381,18 @@ class ProperTree:
 
     def check_string_command(self, event = None):
         self.settings["comment_strip_check_string"] = True if self.comment_check_string.get() else False
+
+    def check_r1_invert_command(self, event = None):
+        self.settings["invert_row1_text_color"] = True if self.r1_inv_check.get() else False
+        self.update_colors()
+
+    def check_r2_invert_command(self, event = None):
+        self.settings["invert_row2_text_color"] = True if self.r2_inv_check.get() else False
+        self.update_colors()
+
+    def check_hl_invert_command(self, event = None):
+        self.settings["invert_hl_text_color"] = True if self.hl_inv_check.get() else False
+        self.update_colors()
 
     def schema_command(self, event = None):
         self.settings["force_snapshot_schema"] = True if self.force_schema.get() else False
@@ -376,9 +419,10 @@ class ProperTree:
         color_type = color_type.lower()
         if color_type == "highlight":
             self.settings.pop("highlight_color",None)
+            self.settings.pop("invert_hl_text_color",None)
             return self.update_settings()
         self.use_dark = self.get_dark()
-        # Find out if we're setting it to light or dark mode - and if on macOS + using the system's current settings,
+        # Find out if we're setting it to light or dark mode - and if on macOS/Windows + using the system's current settings,
         # remove them to use defaults
         color_dict = self.default_light if color_type == "light" else self.default_dark
         to_remove = (self.use_dark and color_type == "dark") or (not self.use_dark and color_type != "dark")
@@ -427,9 +471,32 @@ class ProperTree:
         self.r2_canvas.configure(background="#"+color_2 if len(color_2) == 6 else default_color["alternating_color_2"])
         self.hl_canvas.configure(background="#"+color_h if len(color_h) == 6 else default_color["highlight_color"])
         self.bg_canvas.configure(background="#"+color_b if len(color_b) == 6 else default_color["background_color"])
+        self.r1_inv_check.set(self.settings.get("invert_row1_text_color",False))
+        self.r2_inv_check.set(self.settings.get("invert_row2_text_color",False))
+        self.hl_inv_check.set(self.settings.get("invert_hl_text_color",False))
         self.update_colors()
 
+    def update_canvas_text(self, canvas = None):
+        if canvas == None: # Update all
+            canvas = (self.r1_canvas,self.r2_canvas,self.hl_canvas)
+        if not isinstance(canvas, (tuple,list)): canvas = (canvas,)
+        for c in canvas:
+            if not c in self.canvas_connect: continue # Not a recognized canvas - skip
+            # Update each canvas as needed - but mind the text color
+            color = self.text_color(c["background"],self.canvas_connect[c]["invert"].get())
+            if self.canvas_connect[c].get("text_id",None) == None: # We haven't drawn it yet - try to
+                # Get the size
+                w = self.settings_window.winfo_width()
+                h = c.winfo_height()
+                if w==1==h: # Request width as we haven't drawn yet
+                    w = self.settings_window.winfo_reqwidth()
+                    h = c.winfo_reqheight()
+                self.canvas_connect[c]["text_id"] = c.create_text((w-20)/2,h/2,text="Sample Text")
+            # Set the color
+            c.itemconfig(self.canvas_connect[c]["text_id"], fill=color)
+
     def update_colors(self):
+        self.update_canvas_text()
         # Update all windows' colors
         windows = self.stackorder(self.tk)
         if not len(windows):
@@ -578,11 +645,22 @@ class ProperTree:
     def change_from_type(self, value):
         self.from_type = value
 
-    def show_settings(self, event = None):
-        self.settings_window.deiconify()
-
-    def show_convert(self, event = None):
-        self.tk.deiconify()
+    def show_window(self, window, event = None):
+        if not window.winfo_viewable():
+            # Let's center the window
+            w = window.winfo_width()
+            h = window.winfo_height()
+            if w==1==h: # Request width as we haven't drawn yet
+                if window == self.tk: # Use the defaults
+                    w, h = 640, 130
+                else: # Try to approximate
+                    w = window.winfo_reqwidth()
+                    h = window.winfo_reqheight()
+            x = window.winfo_screenwidth() // 2 - w // 2
+            y = window.winfo_screenheight() // 2 - h // 2
+            window.geometry("+{}+{}".format(x, y))
+            window.deiconify()
+        window.lift()
 
     def convert_values(self, event = None):
         from_value = self.f_text.get()
