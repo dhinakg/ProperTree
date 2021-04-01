@@ -15,6 +15,9 @@ jobs:
       - uses: actions/checkout@v2
 
       # Do not use setup-python. We want python from brew.
+      - name: Install Python 3
+        run: |
+          brew install python3 python-tk
       - name: Check Tk version
         run: python3 -c "import tkinter; print(tkinter.Tcl().eval('info patchlevel'))"
       - name: Install Python Dependencies
