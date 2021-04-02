@@ -301,15 +301,18 @@ class ProperTree:
                 self.settings = json.load(open(self.settings_path + "settings.json"))
             except:
                 pass
+        os.chdir(cwd)
         # Also load the snapshot defaults
+        snapshot_path = "Scripts/snapshot.plist"
+        if getattr(sys, 'frozen', False):
+            snapshot_path = os.path.join(sys._MEIPASS, snapshot_path)
         self.snapshot_data = {}
-        if os.path.exists(self.settings_path + "snapshot.json"):
+        if os.path.exists(snapshot_path):
             try:
-                with open(self.settings_path + "snapshot.json","rb") as f:
+                with open(snapshot_path,"rb") as f:
                     self.snapshot_data = plist.load(f)
             except:
                 pass
-        os.chdir(cwd)
 
         # Setup the settings page to reflect our settings.json file
 
