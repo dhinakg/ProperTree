@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      # Do not use setup-python. We want python from brew.
+      - name: Install Python 3
+        run: |
+          brew install python3 python-tk
+      - name: Check Tk version
+        run: python3 -c "import tkinter; print(tkinter.Tcl().eval('info patchlevel'))"
+      - name: Install Python Dependencies
+        run: |
+          python3 -m pip install -U pip
+          pip3 install pyinstaller
+
+      - run: pyinstaller ProperTree.spec
+      - run: ./after_pyinstaller.sh
+
+      - name: Upload to Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: Artifacts macOS
+          path: dist/ProperTree.app.zip
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@e74ff71f7d8a4c4745b560a485cc5fdb9b5b999d
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/ProperTree.app.zip
+          tag: ${{ github.ref }}
+          file_glob: true
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.x"
+      - name: Check Tk version
+        run: python3 -c "import tkinter; print(tkinter.Tcl().eval('info patchlevel'))"
+      - name: Install Python Dependencies
+        run: |
+          python3 -m pip install -U pip
+          pip3 install pyinstaller
+
+      - run: pyinstaller ProperTree.spec
+
+      - name: Upload to Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: Artifacts Windows
+          path: dist/ProperTree.exe
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@e74ff71f7d8a4c4745b560a485cc5fdb9b5b999d
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/ProperTree.exe
+          tag: ${{ github.ref }}
+          file_glob: true
