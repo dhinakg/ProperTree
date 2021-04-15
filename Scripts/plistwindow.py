@@ -220,7 +220,8 @@ class PlistWindow(tk.Toplevel):
         self.drag_undo = None
         self.clicked_drag = False
         self.saving = False
-        self.data_display = "hex" # hex or base64
+        self.last_data = None
+        self.last_int  = None
         # self.xcode_data = self.controller.xcode_data # keep <data>xxxx</data> in one line when true
         # self.sort_dict = self.controller.sort_dict # Preserve key ordering in dictionaries when loading/saving
         self.menu_code = u"\u21D5"
@@ -356,14 +357,14 @@ class PlistWindow(tk.Toplevel):
             file_menu.add_command(label="OC Snapshot", command=self.oc_snapshot, accelerator="Ctrl+R")
             file_menu.add_command(label="OC Clean Snapshot", command=self.oc_clean_snapshot, accelerator="Ctrl+Shift+R")
             file_menu.add_separator()
-            file_menu.add_command(label="Convert Window", command=self.controller.show_convert, accelerator="Ctrl+T")
+            file_menu.add_command(label="Convert Window", command=lambda:self.controller.show_window(self.controller.tk), accelerator="Ctrl+T")
             file_menu.add_command(label="Strip Comments", command=self.strip_comments, accelerator="Ctrl+M")
             file_menu.add_command(label="Strip Disabled Entries", command=self.strip_disabled, accelerator="Ctrl+E")
             file_menu.add_separator()
-            file_menu.add_command(label="Settings",command=self.controller.show_settings, accelerator="Ctrl+,")
+            file_menu.add_command(label="Settings",command=lambda:self.controller.show_window(self.controller.settings_window), accelerator="Ctrl+,")
             file_menu.add_separator()
             file_menu.add_command(label="Toggle Find/Replace Pane",command=self.hide_show_find, accelerator="Ctrl+F")
-            file_menu.add_command(label="Toggle Plist/Data Type Pane",command=self.hide_show_type, accelerator="Ctrl+P")
+            file_menu.add_command(label="Toggle Plist/Data/Int Type Pane",command=self.hide_show_type, accelerator="Ctrl+P")
             file_menu.add_separator()
             file_menu.add_command(label="Quit", command=self.controller.quit, accelerator="Ctrl+Q")
             self.config(menu=main_menu)
@@ -382,20 +383,26 @@ class PlistWindow(tk.Toplevel):
 
         # Create our type/data view
         self.display_frame = tk.Frame(self,height=20)
-        self.display_frame.columnconfigure(2,weight=1)
-        self.display_frame.columnconfigure(4,weight=1)
+        for x in (2,4,6):
+            self.display_frame.columnconfigure(x,weight=1)
         pt_label = tk.Label(self.display_frame,text="Plist Type:")
         dt_label = tk.Label(self.display_frame,text="Display Data as:")
+        in_label = tk.Label(self.display_frame,text="Display Integers as:")
         self.plist_type_string = tk.StringVar(self.display_frame)
         self.plist_type_menu = tk.OptionMenu(self.display_frame, self.plist_type_string, "XML","Binary", command=self.change_plist_type)
         self.plist_type_string.set("XML")
         self.data_type_string = tk.StringVar(self.display_frame)
         self.data_type_menu = tk.OptionMenu(self.display_frame, self.data_type_string, "Hex","Base64", command=self.change_data_type)
         self.data_type_string.set("Hex")
+        self.int_type_string = tk.StringVar(self.display_frame)
+        self.int_type_menu = tk.OptionMenu(self.display_frame, self.int_type_string, "Decimal","Hex", command=self.change_int_type)
+        self.int_type_string.set("Decimal")
         pt_label.grid(row=1,column=1,padx=10,pady=(0,5),sticky="w")
         dt_label.grid(row=1,column=3,padx=10,pady=(0,5),sticky="w")
+        in_label.grid(row=1,column=5,padx=10,pady=(0,5),sticky="w")
         self.plist_type_menu.grid(row=1,column=2,padx=10,pady=10,sticky="we")
         self.data_type_menu.grid(row=1,column=4,padx=10,pady=10,sticky="we")
+        self.int_type_menu.grid(row=1,column=6,padx=10,pady=10,sticky="we")
         
         # Create our find/replace view
         self.find_frame = tk.Frame(self,height=20)
@@ -455,7 +462,12 @@ class PlistWindow(tk.Toplevel):
             self.title(self.title()+" - Edited")
 
     def change_data_type(self, value):
-        self.change_data_display(value.lower())
+        self.change_data_display(value)
+        self.last_data = value
+
+    def change_int_type(self, value):
+        self.change_int_display(value)
+        self.last_int = value
 
     def change_find_type(self, value):
         self.find_type = value
@@ -463,7 +475,7 @@ class PlistWindow(tk.Toplevel):
     def qualify_value(self, value, value_type):
         value_type = value_type.lower()
         if value_type == "data":
-            if self.data_display == "hex":
+            if self.data_type_string.get().lower() == "hex":
                 value = "".join(value.split()).replace("<","").replace(">","")
                 if value.lower().startswith("0x"):
                     value = value[2:]
@@ -508,6 +520,10 @@ class PlistWindow(tk.Toplevel):
                         value = float(value)
                     except:
                         return (False,"Invalid Number Data","Couldn't convert to an integer or float.")
+            if self.int_type_string.get().lower() == "hex" and not isinstance(value,float):
+                value = hex(value).upper()[2:]
+                if len(value) % 2: value = "0"+value # Pad to an even number of chars
+                value = "0x"+value
             value = str(value)
         elif value_type == "boolean":
             if not value.lower() in ("true","false"):
@@ -561,7 +577,7 @@ class PlistWindow(tk.Toplevel):
             self._tree.item(node,values=values)
         elif find_type == "data":
             # if hex, we need to strip spaces and brackets, upper() both, and compare
-            if self.data_display == "hex":
+            if self.data_type_string.get().lower() == "hex":
                 find = find.replace(" ","").replace("<","").replace(">","").upper()
                 new_text = new_text.replace(" ","").replace("<","").replace(">","").upper()
                 values[1] = values[1].upper().replace(" ","").replace("<","").replace(">","").upper().replace(find,new_text)
@@ -671,7 +687,7 @@ class PlistWindow(tk.Toplevel):
         # Break out and compare
         if node_type == "data":
             # if hex, we need to strip spaces and brackets, upper() both, and compare
-            if self.data_display == "hex":
+            if self.data_type_string.get().lower() == "hex":
                 if text.replace(" ","").replace("<","").replace(">","").upper() in value.replace(" ","").replace("<","").replace(">","").upper():
                     # Got a match!
                     return True
@@ -829,7 +845,7 @@ class PlistWindow(tk.Toplevel):
             mb.showerror("An Error Occurred While Opening {}".format(os.path.basename(self.current_plist)), str(e),parent=self)
             return
         # We should have the plist data now
-        self.open_plist(self.current_plist,plist_data, self.plist_type_string.get())
+        self.open_plist(self.current_plist,plist_data,self.plist_type_string.get())
 
     def walk_kexts(self,path,parent="",kext_add={}):
         kexts = []
@@ -917,7 +933,8 @@ class PlistWindow(tk.Toplevel):
         self.oc_snapshot(event,True)
 
     def oc_snapshot(self, event = None, clean = False):
-        oc_folder = fd.askdirectory(title="Select OC Folder:")
+        target_dir = os.path.dirname(self.current_plist) if self.current_plist and os.path.exists(os.path.dirname(self.current_plist)) else None
+        oc_folder = fd.askdirectory(title="Select OC Folder:",initialdir=target_dir)
         if not len(oc_folder):
             return
 
@@ -1266,19 +1283,35 @@ class PlistWindow(tk.Toplevel):
         self.clicked_drag = False
         if not event:
             return
-        column = self._tree.identify_column(event.x)
-        rowid  = self._tree.identify_row(event.y)
-        if rowid: # and column == "#3":
-            # Mouse down in the drag column
+        rowid = self._tree.identify_row(event.y)
+        if rowid and self._tree.bbox(rowid):
+            # Mouse down in a valid node
             self.clicked_drag = True
 
-    def change_data_display(self, new_display = "hex"):
+    def change_int_display(self, new_display = "Decimal"):
+        if new_display == self.last_int: return
+        self.int_type_string.set(new_display[0].upper()+new_display[1:])
+        nodes = self.iter_nodes(False)
+        removedlist = []
+        for node in nodes:
+            values = self.get_padded_values(node,3)
+            t = self.get_check_type(node).lower()
+            value = values[1]
+            if t == "number":
+                if new_display.lower() == "hex":
+                    try: value = "0x"+hex(int(value)).upper()[2:].rjust(2,"0")
+                    except: pass
+                else:
+                    if value.lower().startswith("0x"):
+                        value = str(int(value,16))
+                values[1] = value
+                self._tree.item(node,values=values)
+
+    def change_data_display(self, new_display = "Hex"):
+        if new_display == self.last_data: return
         self.data_type_string.set(new_display[0].upper()+new_display[1:])
         # This will change how data is displayed - we do this by converting all our existing
         # data values to bytes, then reconverting and displaying appropriately
-        if new_display == self.data_display:
-            # Nothing to do here
-            return
         nodes = self.iter_nodes(False)
         removedlist = []
         for node in nodes:
@@ -1287,7 +1320,7 @@ class PlistWindow(tk.Toplevel):
             value = values[1]
             if t == "data":
                 # We need to adjust how it is displayed, load the bytes first
-                if new_display == "hex":
+                if new_display.lower() == "hex":
                     # Convert to hex
                     if sys.version_info < (3,0):
                         value = binascii.hexlify(base64.b64decode(value))
@@ -1303,7 +1336,6 @@ class PlistWindow(tk.Toplevel):
                         value = base64.b64encode(binascii.unhexlify(value.replace("<","").replace(">","").replace(" ","").encode("utf-8"))).decode("utf-8")
                 values[1] = value
                 self._tree.item(node,values=values)
-        self.data_display = new_display
 
     def add_undo(self, action):
         if not isinstance(action,list):
@@ -1919,6 +1951,11 @@ class PlistWindow(tk.Toplevel):
             self._tree.item(i, values=(self.get_type(value),self.get_data(value),"" if parentNode == "" else self.drag_code,))
         elif isinstance(value, datetime.datetime):
             self._tree.item(i, values=(self.get_type(value),value.strftime("%b %d, %Y %I:%M:%S %p"),"" if parentNode == "" else self.drag_code,))
+        elif isinstance(value, (int,long)) and not isinstance(value, bool) and self.int_type_string.get().lower() == "hex":
+            v_type = self.get_type(value)
+            try: value = "0x"+hex(int(value)).upper()[2:].rjust(2,"0")
+            except: value = "0x00" # Default to 0
+            self._tree.item(i, values=(v_type,value,"" if parentNode == "" else self.drag_code,))
         else:
             self._tree.item(i, values=(self.get_type(value),value,"" if parentNode == "" else self.drag_code,))
         return i
@@ -1935,15 +1972,21 @@ class PlistWindow(tk.Toplevel):
         elif check_type == "boolean":
             value = True if values[1].lower() == "true" else False
         elif check_type == "number":
-            try:
-                value = int(value)
-            except:
+            if self.int_type_string.get().lower() == "hex" and value.lower().startswith("0x"):
                 try:
-                    value = float(value)
+                    value = int(value,16)
                 except:
-                    value = 0 # default to 0 if we have to have something
+                    value = 0
+            else:
+                try:
+                    value = int(value)
+                except:
+                    try:
+                        value = float(value)
+                    except:
+                        value = 0 # default to 0 if we have to have something
         elif check_type == "data":
-            if self.data_display == "hex":
+            if self.data_type_string.get().lower() == "hex":
                 # Convert the hex
                 if sys.version_info < (3, 0):
                     value = plistlib.Data(binascii.unhexlify(value.replace("<","").replace(">","").replace(" ","")))
@@ -2017,8 +2060,8 @@ class PlistWindow(tk.Toplevel):
         if sys.version_info < (3,0) and isinstance(value, plistlib.Data):
             value = value.data
         if not len(value):
-            return "<>" if self.data_display == "hex" else ""
-        if self.data_display == "hex":
+            return "<>" if self.data_type_string.get().lower() == "hex" else ""
+        if self.data_type_string.get().lower() == "hex":
             h = binascii.hexlify(value)
             if sys.version_info >= (3,0):
                 h = h.decode("utf-8")
@@ -2184,7 +2227,7 @@ class PlistWindow(tk.Toplevel):
         # Set the value if need be
         value = self.get_check_type(None,value).lower()
         if value.lower() == "number":
-            values[1] = 0
+            values[1] = "0" if self.int_type_string.get().lower() == "decimal" else "0x00"
         elif value.lower() == "boolean":
             values[1] = "True"
         elif value.lower() == "array":
@@ -2196,7 +2239,7 @@ class PlistWindow(tk.Toplevel):
         elif value.lower() == "date":
             values[1] = datetime.datetime.now().strftime("%b %d, %Y %I:%M:%S %p")
         elif value.lower() == "data":
-            values[1] = "<>" if self.data_display == "hex" else ""
+            values[1] = "<>" if self.data_type_string.get().lower() == "hex" else ""
         else:
             values[1] = ""
         # Set the values
@@ -2389,10 +2432,12 @@ class PlistWindow(tk.Toplevel):
     def do_sort(self, cell, recursive = False, reverse = False):
         undo_tasks = []
         children = self._tree.get_children(cell)
-        sorted_children = sorted([(x,self._tree.item(x,"text")) for x in children],key=lambda x:x[1].lower(), reverse=reverse)
+        sorted_children = [(x,self._tree.item(x,"text")) for x in children]
+        if self.get_check_type(cell).lower() == "dictionary":
+            sorted_children = sorted(sorted_children,key=lambda x:x[1].lower(), reverse=reverse)
         for index,child in enumerate(sorted_children):
-            if self.get_check_type(child[0]).lower() in ("dictionary","array"):
-                undo_tasks.extend(self.do_sort(child[0],recursive))
+            if self.get_check_type(child[0]).lower() in ("dictionary","array") and recursive:
+                undo_tasks.extend(self.do_sort(child[0],recursive=recursive,reverse=reverse))
             if child[0] == children[index]: continue # They're the same, nothing to do here
             # Add the move command
             undo_tasks.append({
@@ -2561,8 +2606,8 @@ class PlistWindow(tk.Toplevel):
         # what row and column was clicked on
         rowid = self._tree.identify_row(event.y)
         column = self._tree.identify_column(event.x)
-        if rowid == "" or column == "#3":
-            # Nothing (or drag handles) double clicked, bail
+        if not rowid or not self._tree.bbox(rowid):
+            # Nothing double clicked, bail
             return "break"
         # clicked row parent id
         parent = self._tree.parent(rowid)
@@ -2684,27 +2729,15 @@ class PlistWindow(tk.Toplevel):
         # Call the actual alternate_colors function
         self.alternate_colors(event)
 
-    def text_color(self, hex_color):
-        hex_color = hex_color.lower()
-        if hex_color.startswith("0x"): hex_color = hex_color[2:]
-        if hex_color.startswith("#"): hex_color = hex_color[1:]
-        # Check for bogus hex and return "black" by default
-        if len(hex_color) != 6 or not all((x in "0123456789abcdef" for x in hex_color)): return "black"
-        # Get the r, g, and b values and determine our fake luminance
-        r = float(int(hex_color[0:2],16))
-        g = float(int(hex_color[2:4],16))
-        b = float(int(hex_color[4:6],16))
-        return "black" if (r*0.299 + g*0.587 + b*0.114) > 186 else "white"
-
     def set_colors(self, event = None):
         # Setup the colors and styles
         self.r1 = self.controller.r1_canvas["background"]
         self.r2 = self.controller.r2_canvas["background"]
         self.hl = self.controller.hl_canvas["background"]
         self.bg = self.controller.bg_canvas["background"]
-        self.r1t = self.text_color(self.r1)
-        self.r2t = self.text_color(self.r2)
-        self.hlt = self.text_color(self.hl)
+        self.r1t = self.controller.text_color(self.r1,invert=self.controller.r1_inv_check.get())
+        self.r2t = self.controller.text_color(self.r2,invert=self.controller.r2_inv_check.get())
+        self.hlt = self.controller.text_color(self.hl,invert=self.controller.hl_inv_check.get())
         self.style.configure(self.style_name, background=self.bg, fieldbackground=self.bg)
         self.style.map(self.style_name, background=[("selected", self.hl)], foreground=[("selected", self.hlt)])
         self._tree.tag_configure('even', foreground=self.r1t, background=self.r1)
