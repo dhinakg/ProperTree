@@ -520,7 +520,7 @@ class PlistWindow(tk.Toplevel):
                         value = float(value)
                     except:
                         return (False,"Invalid Number Data","Couldn't convert to an integer or float.")
-            if self.int_type_string.get().lower() == "hex" and not isinstance(value,float):
+            if self.int_type_string.get().lower() == "hex" and not isinstance(value,float) and value >= 0:
                 value = hex(value).upper()[2:]
                 if len(value) % 2: value = "0"+value # Pad to an even number of chars
                 value = "0x"+value
@@ -1299,7 +1299,10 @@ class PlistWindow(tk.Toplevel):
             value = values[1]
             if t == "number":
                 if new_display.lower() == "hex":
-                    try: value = "0x"+hex(int(value)).upper()[2:].rjust(2,"0")
+                    try:
+                        value = int(value)
+                        assert value >= 0
+                        value = "0x"+hex(value).upper()[2:].rjust(2,"0")
                     except: pass
                 else:
                     if value.lower().startswith("0x"):
@@ -1953,7 +1956,10 @@ class PlistWindow(tk.Toplevel):
             self._tree.item(i, values=(self.get_type(value),value.strftime("%b %d, %Y %I:%M:%S %p"),"" if parentNode == "" else self.drag_code,))
         elif isinstance(value, (int,long)) and not isinstance(value, bool) and self.int_type_string.get().lower() == "hex":
             v_type = self.get_type(value)
-            try: value = "0x"+hex(int(value)).upper()[2:].rjust(2,"0")
+            try:
+                value = int(value)
+                assert value >= 0
+                value = "0x"+hex(value).upper()[2:].rjust(2,"0")
             except: value = "0x00" # Default to 0
             self._tree.item(i, values=(v_type,value,"" if parentNode == "" else self.drag_code,))
         else:
@@ -2432,22 +2438,24 @@ class PlistWindow(tk.Toplevel):
     def do_sort(self, cell, recursive = False, reverse = False):
         undo_tasks = []
         children = self._tree.get_children(cell)
-        sorted_children = [(x,self._tree.item(x,"text")) for x in children]
+        if not len(children): return undo_tasks # bail early, nothing to check
+        sorted_children = [x for x in children]
         if self.get_check_type(cell).lower() == "dictionary":
-            sorted_children = sorted(sorted_children,key=lambda x:x[1].lower(), reverse=reverse)
+            sorted_children = sorted(sorted_children,key=lambda x:self._tree.item(x,"text").lower(), reverse=reverse)
+        skip_sort = all((children[x]==sorted_children[x] for x in range(len(children))))
         for index,child in enumerate(sorted_children):
-            if self.get_check_type(child[0]).lower() in ("dictionary","array") and recursive:
-                undo_tasks.extend(self.do_sort(child[0],recursive=recursive,reverse=reverse))
-            if child[0] == children[index]: continue # They're the same, nothing to do here
+            if self.get_check_type(child).lower() in ("dictionary","array") and recursive:
+                undo_tasks.extend(self.do_sort(child,recursive=recursive,reverse=reverse))
+            if skip_sort: continue # No change - skip sorting
             # Add the move command
             undo_tasks.append({
                 "type":"move",
-                "cell":child[0],
+                "cell":child,
                 "from":cell,
                 "to":cell,
-                "index":self._tree.index(child[0])
+                "index":self._tree.index(child)
             })
-            self._tree.move(child[0], cell, index)
+            self._tree.move(child, cell, index)
         return undo_tasks
 
     def sort_keys(self, cell, recursive = False, reverse = False):
